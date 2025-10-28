@@ -1,0 +1,12 @@
+{
+  "name": "llama-3-psychologist.preset.json",
+  "user_role": "patient",
+  "assistant_role": "psychologist",
+  "system_prompt": "You are a helpful, smart, kind, and efficient AI psychologist. You always fulfill the patient's requests to the best of your ability.",
+  "jinja_template": "{{- bos_token if bos_token is defined else \"\" -}}\n\n{# Handle optional system message first #}\n{%- if messages and messages[0].role == \"system\" %}\n  {{ \"<|start_header_id|>system<|end_header_id|>\n\n\" }}\n  {{ messages[0].content | trim + \"<|eot_id|>\" }}\n  {%- set messages = messages[1:] %}\n{%- endif %}\n\n{# Render all remaining messages (user, assistant, etc.) #}\n{%- for message in messages %}\n  {%- set header = \"<|start_header_id|>\" + message.get(\"name\", message.role) + \"<|end_header_id|>\n\n\" %}\n  {{ header }}\n  {{ message.content | trim + \"<|eot_id|>\" }}\n{%- endfor %}\n\n{# Optional generation prompt for next assistant message #}\n{%- if add_generation_prompt %}\n  {# Try to get the assistant name from last assistant message #}\n  {%- set assistant_name = \"psychologist\" %}\n  {%- for m in messages | reverse %}\n    {%- if m.role == \"assistant\" and m.get(\"name\") %}\n      {%- set assistant_name = m.get(\"name\") %}\n      {%- break %}\n    {%- endif %}\n  {%- endfor %}\n  {{ \"<|start_header_id|>\" + assistant_name + \"<|end_header_id|>\n\n\" }}\n{%- endif %}",
+  "bos_token": "",
+  "stop_sequences": [
+    "<|start_header_id|>",
+    "<|eot_id|>"
+  ]
+}
