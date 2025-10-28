@@ -14,9 +14,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--assistant-role', dest='assistant_role', default=None, help='Display name and API role alias for the assistant.')
     parser.add_argument('-v', '--voice', default='af_bella', help='Voice used for TTS playback.')
     parser.add_argument('-s', '--speed', type=float, default=1.0, help='Playback speed for synthesized speech.')
-    parser.add_argument('--temperature', type=float, default=0.7, help='Sampling temperature for the LLM.')
+    parser.add_argument('--temperature', type=float, default=0.0, help='Sampling temperature for the LLM.')
     parser.add_argument('--max-tokens', type=int, default=0, help='Optional cap on generated tokens (0 = unlimited).')
     parser.add_argument('--timeout', type=float, default=120.0, help='HTTP timeout when querying LM Studio.')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed for deterministic sampling.')
     parser.add_argument('--text-only', action='store_true', help='Disable audio playback and only display responses.')
     return parser.parse_args()
 

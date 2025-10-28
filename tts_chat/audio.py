@@ -28,7 +28,7 @@ class AudioPlayer:
     """Handle text-to-speech playback using Kokoro and multiple backends."""
 
     def __init__(self, lang_code: str = "a") -> None:
-        self._pipeline = KPipeline(lang_code=lang_code)
+        self._pipeline = KPipeline(lang_code=lang_code, repo_id='hexgrad/Kokoro-82M')
 
     @staticmethod
     def _play_via_tempfile(audio: np.ndarray) -> None:
