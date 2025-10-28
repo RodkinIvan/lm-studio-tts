@@ -19,24 +19,33 @@ Interactive chat UI that connects to an LM Studio-served model and plays respons
    Optional audio backends (`sounddevice`, `simpleaudio`) are included; the app falls back to an OS player if neither is available.
 
 ## Running the app
-1. Start LM Studio and host your model through “Local Server”. Note the base URL (defaults to `http://127.0.0.1:1234`) and the model identifier exposed by the server (often `lmstudio`).
-2. Launch the chat UI from this directory:
+1. Start LM Studio and expose your chosen model via the **Local Server** tab. Leave it listening on the default `http://127.0.0.1:1234` unless you have a reason to change it.
+2. From this folder, launch the chat UI:
    ```bash
-   python main.py --base-url http://127.0.0.1:1234
+   python main.py
    ```
-   Command-line options:
-   - `--system`, `--user-role`, `--assistant-role` for prompt customization.
-   - `--voice` and `--speed` to adjust Kokoro playback.
-   - `--temperature` (default `0.0`) and `--seed` (default `42`) for deterministic sampling.
-   - `--text-only` to disable audio output while keeping the chat UI.
+   The defaults assume LM Studio serves the model under the name `lmstudio` at `http://127.0.0.1:1234`. Adjust via CLI flags if needed:
+   - `--model lmstudio` and/or `--base-url http://127.0.0.1:1234`
+   - `--system`, `--user-role`, `--assistant-role` to tweak the prompt
+   - `--voice` / `--speed` for Kokoro playback
+   - `--temperature` (default `0.0`) and `--seed` (default `42`) for deterministic sampling
+   - `--text-only` to disable audio while keeping the chat window
 
-The window provides:
-- Streaming assistant replies with in-flight TTS playback.
-- Right-click context menu to edit, delete, or continue messages.
-- Preset panel to manage LM Studio prompt templates. Presets are saved under `~/.cache/lm-studio-tts/config-presets/`.
+Once running you get:
+- Streaming assistant responses, with real-time TTS if audio is enabled
+- Right-click actions to edit, delete, or continue any message
+- A preset panel that loads/saves templates under `~/.cache/lm-studio-tts/config-presets/`
+
+### Optional: copy bundled presets
+The repo ships with sample presets (`presets/llama-3-psychologist.preset.json`, etc.). Copy them into your preset cache with:
+```bash
+python scripts/copy_presets.py            # copies to ~/.cache/lm-studio-tts/config-presets
+# or customise:
+python scripts/copy_presets.py --target /custom/path --overwrite
+```
+This step is optional; the chat UI works fine without importing these presets.
 
 ## Troubleshooting
 - **No audio**: ensure the optional backends are installed or let the app fall back to system playback. You can also launch with `--text-only`.
 - **Tkinter missing**: install OS packages (`sudo apt install python3-tk` on Debian/Ubuntu).
 - **Requests failing**: confirm the LM Studio server is running and the base URL/model name match the ones shown in LM Studio.
-
