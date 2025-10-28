@@ -17,6 +17,7 @@ def stream_completions(
     max_tokens: int,
     timeout: float,
     stop_sequences: Optional[List[str]] = None,
+    seed: Optional[int] = None,
     stop_event: Optional["threading.Event"] = None,
 ) -> Iterator[str]:
     from threading import Event  # local import to avoid circular typing
@@ -35,6 +36,8 @@ def stream_completions(
         payload['max_tokens'] = max_tokens
     if stop_sequences:
         payload['stop'] = stop_sequences
+    if seed is not None:
+        payload['seed'] = seed
 
     response = requests.post(url, json=payload, timeout=timeout, stream=True)
     response.raise_for_status()
