@@ -4,7 +4,10 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
+import queue
 from pathlib import Path
+from typing import ClassVar, Optional, Tuple
 
 import numpy as np
 import soundfile as sf
@@ -26,9 +29,24 @@ from .kokoro_local import LocalKPipeline, ensure_local_kokoro_repo
 class AudioPlayer:
     """Handle text-to-speech playback using Kokoro and multiple backends."""
 
+    _last_instance: ClassVar[Optional["AudioPlayer"]] = None
+
     def __init__(self, lang_code: str = "a") -> None:
         model_dir = ensure_local_kokoro_repo()
         self._pipeline = LocalKPipeline(lang_code=lang_code, model_dir=model_dir)
+
+        self._text_queue: "queue.Queue[Tuple[str, str, float]]" = queue.Queue()
+        self._play_queue: "queue.Queue[object]" = queue.Queue(maxsize=4)
+        self._stop_flag = threading.Event()
+        self._playback_sentinel = object()
+        self._first_error: Optional[Exception] = None
+        self._error_lock = threading.Lock()
+
+        self._generator_thread = threading.Thread(target=self._generator_loop, daemon=True)
+        self._playback_thread = threading.Thread(target=self._playback_loop, daemon=True)
+        self._generator_thread.start()
+        self._playback_thread.start()
+        AudioPlayer._last_instance = self
 
     @staticmethod
     def _play_via_tempfile(audio: np.ndarray) -> None:
@@ -76,18 +94,88 @@ class AudioPlayer:
         AudioPlayer._play_via_tempfile(audio)
 
     def speak_text(self, text: str, voice: str, speed: float) -> None:
+        self._raise_if_error()
         if not text.strip():
             return
 
-        generator = self._pipeline(text, voice=voice, speed=speed, split_pattern=r"\n+")
-        for _, _, audio in generator:
-            audio_array = np.asarray(audio, dtype=np.float32)
-            self._play_buffer(audio_array)
+        try:
+            self._text_queue.put_nowait((text, voice, speed))
+        except queue.Full:
+            raise RuntimeError("Audio queue is full; cannot enqueue speech right now.")
+
+    def _generator_loop(self) -> None:
+        while not self._stop_flag.is_set():
+            try:
+                item = self._text_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+
+            text, voice, speed = item
+            try:
+                generator = self._pipeline(text, voice=voice, speed=speed, split_pattern=r"\n+")
+                for _, _, audio in generator:
+                    audio_array = np.asarray(audio, dtype=np.float32)
+                    self._put_play_item(audio_array)
+            except Exception as exc:
+                self._record_error(exc)
+
+    def _put_play_item(self, audio_array: np.ndarray) -> None:
+        while not self._stop_flag.is_set():
+            try:
+                self._play_queue.put(audio_array, timeout=0.1)
+                return
+            except queue.Full:
+                continue
+
+    def _playback_loop(self) -> None:
+        while not self._stop_flag.is_set():
+            try:
+                item = self._play_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+
+            if item is self._playback_sentinel:
+                break
+
+            try:
+                self._play_buffer(item)  # type: ignore[arg-type]
+            except Exception as exc:
+                self._record_error(exc)
+
+    def _record_error(self, exc: Exception) -> None:
+        with self._error_lock:
+            if self._first_error is None:
+                self._first_error = exc
+
+    def _raise_if_error(self) -> None:
+        with self._error_lock:
+            if self._first_error is not None:
+                raise self._first_error
+
+    def _flush_queues(self) -> None:
+        while True:
+            try:
+                self._text_queue.get_nowait()
+            except queue.Empty:
+                break
+        while True:
+            try:
+                self._play_queue.get_nowait()
+            except queue.Empty:
+                break
 
     @staticmethod
     def stop() -> None:
         if sd is not None:
             try:
                 sd.stop()
+            except Exception:
+                pass
+        inst = AudioPlayer._last_instance
+        if inst is not None:
+            inst._flush_queues()
+            inst._stop_flag.set()
+            try:
+                inst._play_queue.put_nowait(inst._playback_sentinel)
             except Exception:
                 pass
