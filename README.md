@@ -42,6 +42,8 @@ Once running you get:
   <source src="demo/lm-studio-tts-demo.mov" type="video/mp4">
   Your browser does not support the video tag. You can download the demo <a href="demo/lm-studio-tts-demo.mov">here</a>.
 </video>
+<br>
+<small>Demo video is stored via Git LFS; run <code>git lfs install</code> once to fetch it locally.</small>
 
 ### Download Kokoro locally (run once with internet)
 The Kokoro TTS weights now live in this repo so the app can run offline.
