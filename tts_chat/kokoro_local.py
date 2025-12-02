@@ -44,6 +44,7 @@ def ensure_local_kokoro_repo(
     You can override the target via KOKORO_MODEL_DIR or the `target_dir` argument.
     Set KOKORO_ALLOW_DOWNLOAD=0 to forbid network calls and require a pre-populated folder.
     """
+    repo_id = repo_id or DEFAULT_KOKORO_REPO
     resolved_dir = Path(target_dir or os.getenv(ENV_MODEL_DIR, DEFAULT_MODEL_DIR)).expanduser().resolve()
     download_ok = _truthy_env(ENV_ALLOW_DOWNLOAD, True) if allow_download is None else allow_download
 
@@ -93,12 +94,13 @@ class LocalKPipeline(KPipeline):
         *,
         lang_code: str,
         model_dir: Path,
+        repo_id: str = DEFAULT_KOKORO_REPO,
         allow_remote_voices: bool = False,
         trf: bool = False,
         device: Optional[str] = None,
     ) -> None:
         self.model_dir = Path(model_dir).expanduser()
-        self.repo_id = DEFAULT_KOKORO_REPO
+        self.repo_id = repo_id or DEFAULT_KOKORO_REPO
         self.allow_remote_voices = allow_remote_voices
 
         config_path, weights_path = kokoro_paths(self.model_dir)

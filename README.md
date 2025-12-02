@@ -36,6 +36,13 @@ Once running you get:
 - Right-click actions to edit, delete, or continue any message
 - A preset panel that loads/saves templates under `~/.cache/lm-studio-tts/config-presets/`
 
+### Demo
+<video controls width="720">
+  <source src="demo/lm-studio-tts-demo.mov" type="video/quicktime">
+  <source src="demo/lm-studio-tts-demo.mov" type="video/mp4">
+  Your browser does not support the video tag. You can download the demo <a href="demo/lm-studio-tts-demo.mov">here</a>.
+</video>
+
 ### Download Kokoro locally (run once with internet)
 The Kokoro TTS weights now live in this repo so the app can run offline.
 Pull them down once with:
