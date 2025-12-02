@@ -1,0 +1,6 @@
+# Local Kokoro snapshot downloaded for offline TTS
+tts_chat/models/
+
+# Python caches
+__pycache__/
+*.py[cod]
