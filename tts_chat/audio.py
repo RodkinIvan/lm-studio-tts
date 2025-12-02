@@ -19,16 +19,16 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     sa = None
 
-from kokoro import KPipeline
-
 from .constants import SAMPLE_RATE
+from .kokoro_local import LocalKPipeline, ensure_local_kokoro_repo
 
 
 class AudioPlayer:
     """Handle text-to-speech playback using Kokoro and multiple backends."""
 
     def __init__(self, lang_code: str = "a") -> None:
-        self._pipeline = KPipeline(lang_code=lang_code, repo_id='hexgrad/Kokoro-82M')
+        model_dir = ensure_local_kokoro_repo()
+        self._pipeline = LocalKPipeline(lang_code=lang_code, model_dir=model_dir)
 
     @staticmethod
     def _play_via_tempfile(audio: np.ndarray) -> None:

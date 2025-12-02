@@ -36,6 +36,14 @@ Once running you get:
 - Right-click actions to edit, delete, or continue any message
 - A preset panel that loads/saves templates under `~/.cache/lm-studio-tts/config-presets/`
 
+### Download Kokoro locally (run once with internet)
+The Kokoro TTS weights now live in this repo so the app can run offline.
+Pull them down once with:
+```bash
+python scripts/download_kokoro.py
+```
+Files are stored under `tts_chat/models/kokoro-82m` by default. Override with `KOKORO_MODEL_DIR=/path/to/kokoro`. To force offline mode (fail instead of attempting a download), set `KOKORO_ALLOW_DOWNLOAD=0`.
+
 ### Optional: copy bundled presets
 The repo ships with sample presets (`presets/llama-3-psychologist.preset.json`, etc.). Copy them into your preset cache with:
 ```bash
