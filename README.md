@@ -38,12 +38,11 @@ Once running you get:
 
 ### Demo
 <video controls width="720">
-  <source src="demo/lm-studio-tts-demo.mov" type="video/quicktime">
-  <source src="demo/lm-studio-tts-demo.mov" type="video/mp4">
-  Your browser does not support the video tag. You can download the demo <a href="demo/lm-studio-tts-demo.mov">here</a>.
+  <source src="demo/lm-studio-tts-demo.mp4" type="video/mp4">
+  Your browser does not support the video tag. You can download the demo <a href="demo/lm-studio-tts-demo.mp4">here</a>.
 </video>
 <br>
-<small>Demo video is stored via Git LFS. Clones skip it by default (see <code>.lfsconfig</code>); to fetch later run: <code>git lfs fetch --include demo/** && git lfs checkout demo</code>.</small>
+<small>Demo video is stored via Git LFS. To avoid downloading it during clone, use: <code>GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/RodkinIvan/lm-studio-tts.git</code>. Fetch the video later with: <code>git lfs fetch --include demo/** && git lfs checkout demo</code>.</small>
 
 ### Download Kokoro locally (run once with internet)
 The Kokoro TTS weights now live in this repo so the app can run offline.
