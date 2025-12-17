@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 from huggingface_hub import snapshot_download
@@ -84,6 +84,52 @@ def kokoro_paths(model_dir: Path) -> Tuple[Path, Path]:
     """Return (config_path, weights_path) for a Kokoro repo."""
     model_dir = model_dir.expanduser()
     return model_dir / "config.json", model_dir / "kokoro-v1_0.pth"
+
+
+def list_local_voices(target_dir: Optional[Path | str] = None) -> List[str]:
+    """
+    Return available voice filenames (without extension) from the local Kokoro snapshot.
+    """
+    model_dir = Path(target_dir or os.getenv(ENV_MODEL_DIR, DEFAULT_MODEL_DIR)).expanduser()
+    voices_dir = model_dir / "voices"
+    if not voices_dir.is_dir():
+        # Ensure the repo exists; this may download if allowed
+        model_dir = ensure_local_kokoro_repo(target_dir=target_dir)
+        voices_dir = model_dir / "voices"
+    voices = []
+    if voices_dir.is_dir():
+        for path in voices_dir.glob("*.pt"):
+            voices.append(path.stem)
+    return sorted(voices)
+
+
+def load_voice_tensor(voice: str, model_dir: Optional[Path | str] = None) -> torch.Tensor:
+    model_dir = Path(model_dir or os.getenv(ENV_MODEL_DIR, DEFAULT_MODEL_DIR)).expanduser()
+    voices_dir = model_dir / "voices"
+    filename = voice if voice.endswith(".pt") else f"{voice}.pt"
+    path = voices_dir / filename
+    if not path.exists():
+        raise FileNotFoundError(f"Voice file not found: {path}")
+    return torch.load(path, weights_only=True)
+
+
+def save_voice_tensor(name: str, tensor: torch.Tensor, model_dir: Optional[Path | str] = None) -> Path:
+    model_dir = Path(model_dir or os.getenv(ENV_MODEL_DIR, DEFAULT_MODEL_DIR)).expanduser()
+    voices_dir = model_dir / "voices"
+    voices_dir.mkdir(parents=True, exist_ok=True)
+    filename = name if name.endswith(".pt") else f"{name}.pt"
+    path = voices_dir / filename
+    torch.save(tensor, path)
+    return path
+
+
+def mix_voice_tensors(voice_a: str, voice_b: str, alpha: float, model_dir: Optional[Path | str] = None) -> torch.Tensor:
+    alpha = max(0.0, min(1.0, float(alpha)))
+    va = load_voice_tensor(voice_a, model_dir=model_dir)
+    vb = load_voice_tensor(voice_b, model_dir=model_dir)
+    if va.shape != vb.shape:
+        raise ValueError(f"Voice shapes do not match: {va.shape} vs {vb.shape}")
+    return alpha * va + (1 - alpha) * vb
 
 
 class LocalKPipeline(KPipeline):

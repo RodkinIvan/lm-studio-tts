@@ -27,6 +27,7 @@ from .constants import (
     THEME,
 )
 from .exceptions import ChatClientError
+from .kokoro_local import list_local_voices, mix_voice_tensors, save_voice_tensor
 from .preset import Preset, ensure_preset_dir, list_presets, load_preset, save_preset
 from .prompt import build_jinja_environment, render_prompt
 from .utils import extract_speakable_segments, leading_overlap
@@ -94,6 +95,12 @@ class ChatApp:
         self.context_menu_target: Optional[Dict[str, Any]] = None
         self.context_menu: Optional[tk.Menu] = None
         self.wrap_length = 380
+        self.mix_window: Optional[tk.Toplevel] = None
+        self.mix_voice1_var: Optional[tk.StringVar] = None
+        self.mix_voice2_var: Optional[tk.StringVar] = None
+        self.mix_alpha_var: Optional[tk.DoubleVar] = None
+        self.mix_test_text: Optional[tk.Text] = None
+        self.mix_name_var: Optional[tk.StringVar] = None
 
         self._update_aliases()
         self._ensure_system_message(display_if_new=False)
@@ -121,8 +128,26 @@ class ChatApp:
     # UI helpers
 
     def _build_ui(self) -> None:
+        toolbar = tk.Frame(self.main_frame, bg=THEME['bg'])
+        toolbar.pack(fill='x', padx=10, pady=(10, 0))
+
+        mix_button = tk.Button(
+            toolbar,
+            text='Mix Voices',
+            command=self._open_mix_window,
+            bg=THEME['button_bg'],
+            fg=THEME['button_fg'],
+            activebackground=THEME['button_active_bg'],
+            activeforeground=THEME['button_active_fg'],
+            relief='flat',
+            bd=0,
+            padx=10,
+            pady=4,
+        )
+        mix_button.pack(side='left')
+
         self.body_frame = tk.Frame(self.main_frame, bg=THEME['bg'])
-        self.body_frame.pack(fill='both', expand=True, padx=10, pady=(10, 6))
+        self.body_frame.pack(fill='both', expand=True, padx=10, pady=(6, 6))
 
         self.chat_container = tk.Frame(self.body_frame, bg=THEME['bg'])
         self.chat_container.pack(side='left', fill='both', expand=True)
@@ -287,6 +312,28 @@ class ChatApp:
         self.preset_menu.pack(fill='x', pady=(2, 10))
         self._refresh_preset_menu(os.path.basename(self.current_preset_path))
 
+        voice_label = tk.Label(
+            self.settings_frame,
+            text='Voice',
+            bg=THEME['panel_bg'],
+            fg=THEME['panel_label_fg'],
+            font=('Helvetica', 10),
+        )
+        voice_label.pack(anchor='w', pady=(4, 2))
+
+        self.voice_options = self._load_voice_options()
+        initial_voice = self.voice if self.voice in self.voice_options else (self.voice_options[0] if self.voice_options else self.voice)
+        self.voice_var = tk.StringVar(value=initial_voice)
+        self.voice_menu = tk.OptionMenu(self.settings_frame, self.voice_var, *(self.voice_options or ['']))
+        self.voice_menu.configure(
+            bg=THEME['entry_bg'],
+            fg=THEME['entry_fg'],
+            activebackground=THEME['button_active_bg'],
+            activeforeground=THEME['button_active_fg'],
+            relief='flat',
+        )
+        self.voice_menu.pack(fill='x', pady=(0, 8))
+
         self.user_role_var = tk.StringVar(value=self.preset.user_role)
         self.assistant_role_var = tk.StringVar(value=self.preset.assistant_role)
 
@@ -412,6 +459,28 @@ class ChatApp:
     # ------------------------------------------------------------------
     # General helpers
 
+    def _load_voice_options(self) -> List[str]:
+        try:
+            voices = list_local_voices()
+        except Exception:
+            voices = []
+        voices = sorted(set(voices))
+        if self.voice and self.voice not in voices:
+            voices.insert(0, self.voice)
+        return voices
+
+    def _refresh_voice_menu_options(self, selected: Optional[str] = None) -> None:
+        options = self._load_voice_options()
+        target = selected or self.voice
+        if target not in options and options:
+            target = options[0]
+        self.voice_options = options
+        self.voice_var.set(target)
+        menu = self.voice_menu['menu']
+        menu.delete(0, 'end')
+        for opt in options or ['']:
+            menu.add_command(label=opt, command=lambda v=opt: self.voice_var.set(v))
+
     @staticmethod
     def _sanitize_alias(alias: str, fallback: str) -> str:
         cleaned = ''.join(ch if ch.isalnum() or ch in {'_', '-'} else '_' for ch in alias.strip())
@@ -460,6 +529,154 @@ class ChatApp:
                 self.settings_canvas.unbind_all(event)
             self._settings_scroll_handlers = {}
 
+    def _open_mix_window(self) -> None:
+        if self.mix_window is not None and self.mix_window.winfo_exists():
+            self.mix_window.deiconify()
+            self.mix_window.lift()
+            self.mix_window.focus_force()
+            return
+
+        self.mix_window = tk.Toplevel(self.root)
+        self.mix_window.title('Mix Voices')
+        self.mix_window.geometry('360x260')
+        self.mix_window.configure(bg=THEME['bg'])
+        self.mix_window.transient(self.root)
+
+        msg = tk.Label(
+            self.mix_window,
+            text='Voice mixer coming soon.',
+            bg=THEME['bg'],
+            fg=THEME['status_fg'],
+            font=('Helvetica', 12),
+            padx=20,
+            pady=20,
+        )
+        msg.pack(expand=True)
+
+        def _on_close() -> None:
+            if self.mix_window is not None and self.mix_window.winfo_exists():
+                self.mix_window.destroy()
+            self.mix_window = None
+
+        self.mix_window.protocol('WM_DELETE_WINDOW', _on_close)
+
+        voices = self._load_voice_options()
+        default_voice1 = voices[0] if voices else ''
+        default_voice2 = voices[1] if len(voices) > 1 else (voices[0] if voices else '')
+
+        selection_frame = tk.Frame(self.mix_window, bg=THEME['bg'])
+        selection_frame.pack(fill='x', padx=14, pady=(12, 6))
+
+        tk.Label(selection_frame, text='Voice A', bg=THEME['bg'], fg=THEME['panel_label_fg']).grid(row=0, column=0, sticky='w')
+        tk.Label(selection_frame, text='Voice B', bg=THEME['bg'], fg=THEME['panel_label_fg']).grid(row=1, column=0, sticky='w')
+
+        self.mix_voice1_var = tk.StringVar(value=default_voice1)
+        self.mix_voice2_var = tk.StringVar(value=default_voice2)
+        voice_menu_a = tk.OptionMenu(selection_frame, self.mix_voice1_var, *(voices or ['']))
+        voice_menu_b = tk.OptionMenu(selection_frame, self.mix_voice2_var, *(voices or ['']))
+        for menu in (voice_menu_a, voice_menu_b):
+            menu.configure(
+                bg=THEME['entry_bg'],
+                fg=THEME['entry_fg'],
+                activebackground=THEME['button_active_bg'],
+                activeforeground=THEME['button_active_fg'],
+                relief='flat',
+                highlightthickness=0,
+            )
+        voice_menu_a.grid(row=0, column=1, sticky='ew', padx=(6, 0))
+        voice_menu_b.grid(row=1, column=1, sticky='ew', padx=(6, 0))
+        selection_frame.columnconfigure(1, weight=1)
+
+        alpha_frame = tk.Frame(self.mix_window, bg=THEME['bg'])
+        alpha_frame.pack(fill='x', padx=14, pady=(6, 4))
+        tk.Label(alpha_frame, text='Blend (Voice A ↔ Voice B)', bg=THEME['bg'], fg=THEME['panel_label_fg']).pack(anchor='w')
+        self.mix_alpha_var = tk.DoubleVar(value=0.5)
+        alpha_scale = tk.Scale(
+            alpha_frame,
+            variable=self.mix_alpha_var,
+            from_=0.0,
+            to=1.0,
+            resolution=0.01,
+            orient='horizontal',
+            length=240,
+            bg=THEME['bg'],
+            fg=THEME['status_fg'],
+            troughcolor=THEME['panel_bg'],
+            highlightthickness=0,
+        )
+        alpha_scale.pack(fill='x')
+
+        test_frame = tk.Frame(self.mix_window, bg=THEME['bg'])
+        test_frame.pack(fill='both', expand=True, padx=14, pady=(6, 4))
+        tk.Label(test_frame, text='Test text', bg=THEME['bg'], fg=THEME['panel_label_fg']).pack(anchor='w')
+        self.mix_test_text = tk.Text(
+            test_frame,
+            height=3,
+            wrap='word',
+            bg=THEME['entry_bg'],
+            fg=THEME['entry_fg'],
+            insertbackground=THEME['entry_fg'],
+            relief='flat',
+        )
+        self.mix_test_text.pack(fill='x')
+        self.mix_test_text.insert(tk.END, "This is a mixed voice preview.")
+
+        play_btn = tk.Button(
+            test_frame,
+            text='Play Preview',
+            command=self._play_mix_preview,
+            bg=THEME['button_bg'],
+            fg=THEME['button_fg'],
+            activebackground=THEME['button_active_bg'],
+            activeforeground=THEME['button_active_fg'],
+            relief='flat',
+            padx=10,
+            pady=6,
+        )
+        play_btn.pack(anchor='e', pady=(6, 0))
+
+        name_frame = tk.Frame(self.mix_window, bg=THEME['bg'])
+        name_frame.pack(fill='x', padx=14, pady=(6, 4))
+        tk.Label(name_frame, text='New voice name', bg=THEME['bg'], fg=THEME['panel_label_fg']).pack(anchor='w')
+        self.mix_name_var = tk.StringVar()
+        tk.Entry(
+            name_frame,
+            textvariable=self.mix_name_var,
+            bg=THEME['entry_bg'],
+            fg=THEME['entry_fg'],
+            insertbackground=THEME['entry_fg'],
+            relief='flat',
+        ).pack(fill='x')
+
+        button_row = tk.Frame(self.mix_window, bg=THEME['bg'])
+        button_row.pack(fill='x', padx=14, pady=(10, 12))
+        save_btn = tk.Button(
+            button_row,
+            text='Save',
+            command=self._save_mixed_voice,
+            bg=THEME['button_bg'],
+            fg=THEME['button_fg'],
+            activebackground=THEME['button_active_bg'],
+            activeforeground=THEME['button_active_fg'],
+            relief='flat',
+            padx=10,
+            pady=6,
+        )
+        cancel_btn = tk.Button(
+            button_row,
+            text='Cancel',
+            command=_on_close,
+            bg=THEME['button_bg'],
+            fg=THEME['button_fg'],
+            activebackground=THEME['button_active_bg'],
+            activeforeground=THEME['button_active_fg'],
+            relief='flat',
+            padx=10,
+            pady=6,
+        )
+        save_btn.pack(side='right', padx=(6, 0))
+        cancel_btn.pack(side='right')
+
     def _on_chat_mousewheel(self, event: tk.Event) -> str:
         delta = event.delta
         if sys.platform != 'darwin':
@@ -494,6 +711,76 @@ class ChatApp:
         self.chat_canvas.configure(scrollregion=self.chat_canvas.bbox('all'))
         container_width = self.chat_container.winfo_width()
         self.chat_canvas.itemconfig(self.chat_window, width=max(100, container_width - 18))
+
+    def _play_mix_preview(self) -> None:
+        if self.audio_player is None or self.audio_disabled:
+            messagebox.showinfo('Audio disabled', 'Enable audio to preview voices.')
+            return
+        if not self.mix_voice1_var or not self.mix_voice2_var or not self.mix_alpha_var:
+            return
+        v1 = self.mix_voice1_var.get().strip()
+        v2 = self.mix_voice2_var.get().strip()
+        if not v1 or not v2:
+            messagebox.showerror('Missing voices', 'Select both voices to mix.')
+            return
+        alpha = self.mix_alpha_var.get()
+        try:
+            mix_tensor = mix_voice_tensors(v1, v2, alpha)
+        except Exception as exc:
+            messagebox.showerror('Mix error', f'Failed to mix voices:\n{exc}')
+            return
+
+        preview_name = '__preview_mix__'
+        self.audio_player._pipeline.voices[preview_name] = mix_tensor  # type: ignore[attr-defined]
+        text_widget = self.mix_test_text
+        test_text = text_widget.get('1.0', tk.END).strip() if text_widget else ''
+        if not test_text:
+            test_text = "This is a mixed voice preview."
+        try:
+            self.audio_player.speak_text(test_text, voice=preview_name, speed=self.speed)
+        except Exception as exc:
+            messagebox.showerror('Playback error', f'Failed to play preview:\n{exc}')
+
+    def _save_mixed_voice(self) -> None:
+        if not (self.mix_voice1_var and self.mix_voice2_var and self.mix_alpha_var and self.mix_name_var):
+            return
+        name = self.mix_name_var.get().strip()
+        if not name:
+            messagebox.showerror('Missing name', 'Please provide a name for the new voice.')
+            return
+        v1 = self.mix_voice1_var.get().strip()
+        v2 = self.mix_voice2_var.get().strip()
+        if not v1 or not v2:
+            messagebox.showerror('Missing voices', 'Select both voices to mix.')
+            return
+
+        try:
+            mix_tensor = mix_voice_tensors(v1, v2, self.mix_alpha_var.get())
+        except Exception as exc:
+            messagebox.showerror('Mix error', f'Failed to mix voices:\n{exc}')
+            return
+
+        try:
+            save_voice_tensor(name, mix_tensor)
+        except Exception as exc:
+            messagebox.showerror('Save error', f'Failed to save new voice:\n{exc}')
+            return
+
+        # Clear cached voice so it reloads from disk if present
+        try:
+            if self.audio_player is not None:
+                self.audio_player._pipeline.voices.pop(name, None)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+        self._refresh_voice_menu_options(selected=name)
+        # Update mix window options too
+        voices = self._load_voice_options()
+        for var in (self.mix_voice1_var, self.mix_voice2_var):
+            if var.get() not in voices and voices:
+                var.set(voices[0])
+
+        messagebox.showinfo('Voice saved', f'New voice "{name}" saved.')
 
     # ------------------------------------------------------------------
     # Preset handling
@@ -589,6 +876,8 @@ class ChatApp:
                 entry['name'] = self.user_alias
             elif role == 'assistant':
                 entry['name'] = self.assistant_alias
+
+        self.voice = self.voice_var.get().strip() or self.voice
 
         self.user_role_var.set(self.preset.user_role)
         self.assistant_role_var.set(self.preset.assistant_role)
@@ -1354,6 +1643,13 @@ class ChatApp:
             AudioPlayer.stop()
         except Exception:
             pass
+
+        if self.mix_window is not None and self.mix_window.winfo_exists():
+            try:
+                self.mix_window.destroy()
+            except Exception:
+                pass
+            self.mix_window = None
 
         if self.process_queue_job is not None:
             try:
